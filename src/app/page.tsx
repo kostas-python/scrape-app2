@@ -15,12 +15,14 @@ export default function VriskoScraper() {
     setLoading(true);
     try {
       const response = await axios.get(`/api/scrape?url=${encodeURIComponent(url)}`);
+      console.log("Received Data:", response.data);
       setResults(response.data);
     } catch (error) {
       console.error("Error fetching data", error);
     }
     setLoading(false);
   };
+  
 
   const handleDownloadCSV = () => {
     const csvContent = [
