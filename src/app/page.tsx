@@ -80,7 +80,7 @@ export default function VriskoScraper() {
 
   return (
     <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">Vrisko.gr Scraper</h1>
+      <h1 className="text-xl font-bold mb-4">Tech4solutions Scraper</h1>
       
       <div className="flex gap-2 mb-4">
         <Input 
