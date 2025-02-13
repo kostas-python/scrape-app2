@@ -1,37 +1,74 @@
 'use client'
 
 import { useState } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import axios from "axios";
+
+// Define an interface to specify the expected structure of scraped data
+interface ScrapedData {
+  name: string;
+  address: string;
+  occupation: string;
+  email: string;
+  website: string;
+  phone: string;
+}
 
 export default function VriskoScraper() {
-  const [url, setUrl] = useState("");
-  const [results, setResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [url, setUrl] = useState<string>(""); // State for input URL
+  const [results, setResults] = useState<ScrapedData[]>([]); // Store scraped results
+  const [loading, setLoading] = useState<boolean>(false); // Indicate loading state
+  const [error, setError] = useState<string>(""); // Store error messages
 
+  // Function to handle scraping
   const handleScrape = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.get(`/api/scrape?url=${encodeURIComponent(url)}`);
-      console.log("Received Data:", response.data);
-      setResults(response.data);
-    } catch (error) {
-      console.error("Error fetching data", error);
+    if (!url.trim()) {
+      setError("Please enter a valid Vrisko.gr link.");
+      return;
     }
+
+    setLoading(true);
+    setError(""); // Reset error message before fetching data
+
+    try {
+      console.log("Scraping started...");
+      const response = await axios.get<ScrapedData[]>(`/api/scrape?url=${encodeURIComponent(url)}`);
+
+      console.log("Scraping response:", response.data);
+
+      if (response.data.length > 0) {
+        setResults(response.data);
+      } else {
+        setResults([]);
+        setError("No results found. Try a different URL.");
+      }
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError("Failed to scrape data. Please check the URL and try again.");
+    }
+
     setLoading(false);
   };
-  
 
+  // Function to handle CSV download
   const handleDownloadCSV = () => {
+    if (results.length === 0) {
+      setError("No data available to download.");
+      return;
+    }
+
     const csvContent = [
-      ["Name", "Address", "Occupation", "Email", "Website"],
-      ...results.map(item => [item.name, item.address, item.occupation, item.email, item.website])
+      ["Name", "Address", "Phone", "Occupation", "Email", "Website"], // CSV headers
+      ...results.map(({ name, address, phone, occupation, email, website}) => 
+        [name, address, phone, occupation, email, website]
+      ),
     ]
     .map(row => row.join(","))
     .join("\n");
 
+    // Create a downloadable CSV file
     const blob = new Blob([csvContent], { type: "text/csv" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -44,31 +81,59 @@ export default function VriskoScraper() {
   return (
     <div className="p-4">
       <h1 className="text-xl font-bold mb-4">Vrisko.gr Scraper</h1>
+      
       <div className="flex gap-2 mb-4">
-        <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Enter Vrisko.gr link..." />
-        <Button onClick={handleScrape} disabled={loading}>{loading ? "Scraping..." : "Scrape"}</Button>
-        <Button onClick={handleDownloadCSV} disabled={results.length === 0}>Download CSV</Button>
+        <Input 
+          value={url} 
+          onChange={(e) => setUrl(e.target.value)} 
+          placeholder="Enter Vrisko.gr link..." 
+        />
+        <Button onClick={handleScrape} disabled={loading}>
+          {loading ? "Scraping..." : "Scrape"}
+        </Button>
+        <Button onClick={handleDownloadCSV} disabled={results.length === 0}>
+          Download CSV
+        </Button>
       </div>
+
+      {/* Display error message if any */}
+      {error && <p className="text-red-500 mb-4">{error}</p>}
+
+      {/* Display scraped data in a table */}
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Address</TableHead>
+            <TableHead>Phone</TableHead>
             <TableHead>Occupation</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Website</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {results.map((item, index) => (
-            <TableRow key={index}>
-              <TableCell>{item.name}</TableCell>
-              <TableCell>{item.address}</TableCell>
-              <TableCell>{item.occupation}</TableCell>
-              <TableCell>{item.email}</TableCell>
-              <TableCell>{item.website}</TableCell>
+          {results.length > 0 ? (
+            results.map((item, index) => (
+              <TableRow key={index}>
+                <TableCell>{item.name}</TableCell>
+                <TableCell>{item.address}</TableCell>
+                <TableCell>{item.phone}</TableCell>
+                <TableCell>{item.occupation}</TableCell>
+                <TableCell>{item.email}</TableCell>
+                <TableCell>
+                  <a href={item.website} target="_blank" rel="noopener noreferrer" className="text-blue-500">
+                    {item.website}
+                  </a>
+                </TableCell>
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={7} className="text-center">
+                {loading ? "Scraping data..." : "No data available"}
+              </TableCell>
             </TableRow>
-          ))}
+          )}
         </TableBody>
       </Table>
     </div>
