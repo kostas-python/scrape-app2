@@ -58,41 +58,58 @@ export default function VriskoScraper() {
       setError("No data available to download.");
       return;
     }
-
+  
     const csvContent = [
       ["Name", "Address", "Phone", "Occupation", "Email", "Website"], // CSV headers
-      ...results.map(({ name, address, phone, occupation, email, website}) => 
-        [name, address, phone, occupation, email, website]
+      ...results.map(({ name, address, phone, occupation, email, website }) => 
+        [
+          `"${name}"`, 
+          `"${address}"`, 
+          `"${phone}"`, 
+          `"${occupation}"`, 
+          `"${email}"`, 
+          `"${website}"`
+        ]
       ),
     ]
-    .map(row => row.join(","))
-    .join("\n");
-
+    .map(row => row.join(",")) // Convert each row into a CSV string
+    .join("\n"); // Join all rows with a newline
+  
     // Create a downloadable CSV file
-    const blob = new Blob([csvContent], { type: "text/csv" });
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" }); // UTF-8 BOM fixes encoding issues
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "vrisko_data.csv";
+    link.download = "odontiatroiThessaloniki.csv";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  //Reset button function
+  const handleClear = () => {
+    setUrl(""); // Reset input field
+    setResults([]); // Clear results
+    setError(""); // Clear errors
   };
 
   return (
     <div className="p-4">
       <h1 className="text-xl font-bold mb-4">Tech4solutions Scraper</h1>
       
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 w-[1500px]">
         <Input 
           value={url} 
           onChange={(e) => setUrl(e.target.value)} 
           placeholder="Enter Vrisko.gr link..." 
         />
-        <Button onClick={handleScrape} disabled={loading}>
+        <Button className="bg-green-700 font-bold" onClick={handleScrape} disabled={loading}>
           {loading ? "Scraping..." : "Scrape"}
         </Button>
-        <Button onClick={handleDownloadCSV} disabled={results.length === 0}>
+        <Button className="font-bold" onClick={handleDownloadCSV} disabled={results.length === 0}>
           Download CSV
+        </Button>
+        <Button className="bg-red-500 text-white font-bold" onClick={handleClear} variant="secondary">
+          Clear
         </Button>
       </div>
 
