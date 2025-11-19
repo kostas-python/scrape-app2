@@ -85,7 +85,7 @@ export default function VriskoScraper() {
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `kommotiriaMessinias${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `kommotiriaTrikalon${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
