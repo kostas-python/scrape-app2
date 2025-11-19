@@ -59,6 +59,7 @@ export default function VriskoScraper() {
     }
   };
 
+
   const handleDownloadCSV = () => {
     if (results.length === 0) {
       setError("No data available to download.");
@@ -84,7 +85,7 @@ export default function VriskoScraper() {
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `vrisko_data_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `kommotiriaAthina${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
