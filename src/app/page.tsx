@@ -6,18 +6,24 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import axios from "axios";
 
-interface ScrapedData {
+// Updated interface to match API response
+interface BusinessData {
+  surname: string;
   name: string;
+  specialty: string;
   address: string;
-  occupation: string;
+  city: string;
+  postal_code: string;
+  region: string;
+  phone: string;
+  mobile: string;
   email: string;
   website: string;
-  phone: string;
 }
 
 export default function VriskoScraper() {
   const [url, setUrl] = useState<string>("");
-  const [results, setResults] = useState<ScrapedData[]>([]);
+  const [results, setResults] = useState<BusinessData[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
@@ -40,7 +46,7 @@ export default function VriskoScraper() {
 
     try {
       console.log("Scraping started...");
-      const response = await axios.get<ScrapedData[]>(`/api/scrape?url=${encodeURIComponent(url)}`);
+      const response = await axios.get<BusinessData[]>(`/api/scrape?url=${encodeURIComponent(url)}`);
 
       console.log("Scraping response:", response.data);
 
@@ -59,6 +65,26 @@ export default function VriskoScraper() {
     }
   };
 
+  // Helper function to get full name
+  const getFullName = (item: BusinessData): string => {
+    if (item.surname && item.name) {
+      return `${item.surname} ${item.name}`;
+    }
+    return item.surname || item.name || "Unknown";
+  };
+
+  // Helper function to get full address
+  const getFullAddress = (item: BusinessData): string => {
+    const parts = [
+      item.address,
+      item.city,
+      item.postal_code,
+      item.region
+    ].filter(part => part && part.trim());
+    
+    return parts.length > 0 ? parts.join(", ") : "No address provided";
+  };
+
 
   const handleDownloadCSV = () => {
     if (results.length === 0) {
@@ -67,17 +93,21 @@ export default function VriskoScraper() {
     }
   
     const csvContent = [
-      ["Name", "Address", "Phone", "Occupation", "Email", "Website"],
-      ...results.map(({ name, address, phone, occupation, email, website }) => 
-        [
-          `"${name.replace(/"/g, '""')}"`, 
-          `"${address.replace(/"/g, '""')}"`, 
-          `"${phone.replace(/"/g, '""')}"`, 
-          `"${occupation.replace(/"/g, '""')}"`, 
-          `"${email.replace(/"/g, '""')}"`, 
-          `"${website.replace(/"/g, '""')}"`
-        ]
-      ),
+      ["Surname", "Name", "Full Name", "Specialty", "Address", "City", "Postal Code", "Region", "Phone", "Mobile", "Email", "Website"],
+      ...results.map((item) => [
+        `"${(item.surname || "").replace(/"/g, '""')}"`,
+        `"${(item.name || "").replace(/"/g, '""')}"`,
+        `"${getFullName(item).replace(/"/g, '""')}"`,
+        `"${(item.specialty || "").replace(/"/g, '""')}"`,
+        `"${(item.address || "").replace(/"/g, '""')}"`,
+        `"${(item.city || "").replace(/"/g, '""')}"`,
+        `"${(item.postal_code || "").replace(/"/g, '""')}"`,
+        `"${(item.region || "").replace(/"/g, '""')}"`,
+        `"${(item.phone || "").replace(/"/g, '""')}"`,
+        `"${(item.mobile || "").replace(/"/g, '""')}"`,
+        `"${(item.email || "").replace(/"/g, '""')}"`,
+        `"${(item.website || "").replace(/"/g, '""')}"`,
+      ]),
     ]
     .map(row => row.join(","))
     .join("\n");
@@ -85,10 +115,12 @@ export default function VriskoScraper() {
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `kommotiriaArgolidas${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `vrisko-scraped-data-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    setSuccess("CSV file downloaded successfully!");
   };
 
   const handleClear = () => {
@@ -100,7 +132,7 @@ export default function VriskoScraper() {
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Vrisko.gr Scraper</h1>
+      <h1 className="text-2xl font-bold mb-4">Vrisko.gr Business Scraper</h1>
       
       <div className="flex flex-col md:flex-row gap-2 mb-4 w-full">
         <Input 
@@ -166,10 +198,12 @@ export default function VriskoScraper() {
         <Table className="border">
           <TableHeader className="bg-gray-100">
             <TableRow>
-              <TableHead className="font-bold">Name</TableHead>
+              <TableHead className="font-bold">Full Name</TableHead>
+              <TableHead className="font-bold">Specialty</TableHead>
               <TableHead className="font-bold">Address</TableHead>
+              <TableHead className="font-bold">City</TableHead>
               <TableHead className="font-bold">Phone</TableHead>
-              <TableHead className="font-bold">Occupation</TableHead>
+              <TableHead className="font-bold">Mobile</TableHead>
               <TableHead className="font-bold">Email</TableHead>
               <TableHead className="font-bold">Website</TableHead>
             </TableRow>
@@ -178,16 +212,42 @@ export default function VriskoScraper() {
             {results.length > 0 ? (
               results.map((item, index) => (
                 <TableRow key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell>{item.address}</TableCell>
-                  <TableCell>{item.phone}</TableCell>
-                  <TableCell>{item.occupation}</TableCell>
+                  <TableCell className="font-medium">{getFullName(item)}</TableCell>
+                  <TableCell>{item.specialty || "Not specified"}</TableCell>
+                  <TableCell>{getFullAddress(item)}</TableCell>
+                  <TableCell>{item.city || "Not specified"}</TableCell>
+                  <TableCell>
+                    {item.phone ? (
+                      <a 
+                        href={`tel:${item.phone}`} 
+                        className="text-blue-600 hover:underline"
+                        title="Call this number"
+                      >
+                        {item.phone}
+                      </a>
+                    ) : (
+                      <span className="text-gray-400">Not available</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {item.mobile ? (
+                      <a 
+                        href={`tel:${item.mobile}`} 
+                        className="text-blue-600 hover:underline"
+                        title="Call this mobile"
+                      >
+                        {item.mobile}
+                      </a>
+                    ) : (
+                      <span className="text-gray-400">Not available</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {item.email ? (
                       <a 
                         href={`mailto:${item.email}`} 
                         className="text-blue-600 hover:underline break-all"
-                        title={`Email ${item.name}`}
+                        title={`Email ${getFullName(item)}`}
                       >
                         {item.email}
                       </a>
@@ -204,7 +264,8 @@ export default function VriskoScraper() {
                         className="text-blue-600 hover:underline break-all"
                         title="Visit website"
                       >
-                        {item.website.replace(/^https?:\/\//, '')}
+                        {item.website.replace(/^https?:\/\//, '').substring(0, 40)}
+                        {item.website.length > 40 ? "..." : ""}
                       </a>
                     ) : (
                       <span className="text-gray-400">Not available</span>
@@ -214,7 +275,7 @@ export default function VriskoScraper() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                   {loading ? (
                     <div className="flex items-center justify-center">
                       <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -230,6 +291,19 @@ export default function VriskoScraper() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Summary section */}
+      {results.length > 0 && (
+        <div className="mt-4 p-3 bg-gray-50 rounded border">
+          <h3 className="font-semibold text-sm mb-2">Summary</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <div>Total Businesses: {results.length}</div>
+            <div>With Email: {results.filter(r => r.email).length}</div>
+            <div>With Website: {results.filter(r => r.website).length}</div>
+            <div>With Phone: {results.filter(r => r.phone || r.mobile).length}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
