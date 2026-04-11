@@ -45,6 +45,13 @@ async function getBrowser(): Promise<Browser> {
   return browserInstance;
 }
 
+// Helper function to generate a unique key for a business
+function getBusinessKey(business: BusinessData): string {
+  // Use surname + name + address as unique identifier (or phone if available)
+  const identifier = business.phone || business.mobile || `${business.surname}|${business.name}|${business.address}`;
+  return identifier.toLowerCase().trim().replace(/\s+/g, '');
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { url } = req.query;
 
@@ -61,7 +68,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     await page.setRequestInterception(true);
     
-    // Fixed: Properly typed request handler
     page.on('request', (req: HTTPRequest) => {
       const resourceType = req.resourceType();
       if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
@@ -74,10 +80,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36");
     await page.setViewport({ width: 1920, height: 1080 });
 
-    let allResults: BusinessData[] = [];
+    // Use Map to store unique businesses by their unique key
+    const uniqueBusinessesMap = new Map<string, BusinessData>();
     let nextPageUrl: string | null = url;
     let pageCount = 0;
-    const maxPages = 10;
+    const maxPages = 50; // Increased max pages, but will stop early if no new results
+    let consecutivePagesWithNoNewResults = 0;
+    const maxConsecutiveEmptyPages = 3; // Stop after 3 pages with no new unique results
 
     // Batch process email URLs
     const processEmailBatch = async (results: BusinessData[]) => {
@@ -90,7 +99,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               
               await emailPage.setRequestInterception(true);
               
-              // Fixed: Properly typed request handler for email page
               emailPage.on('request', (req: HTTPRequest) => {
                 if (['image', 'stylesheet', 'font', 'media', 'script'].includes(req.resourceType())) {
                   req.abort();
@@ -124,7 +132,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               await emailPage.close();
               return { index, email: extractedEmail || "" };
             } catch (error) {
-              console.error(`Failed to fetch email for ${result.surname} ${result.name}:`, error);
+              console.error(`Failed to fetch email:`, error);
               return { index, email: "" };
             }
           }
@@ -142,6 +150,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     while (nextPageUrl && pageCount < maxPages) {
       console.log(`Scraping page ${pageCount + 1}: ${nextPageUrl}`);
+      
+      // Check if we've had too many pages with no new results
+      if (consecutivePagesWithNoNewResults >= maxConsecutiveEmptyPages) {
+        console.log(`No new unique results found for ${maxConsecutiveEmptyPages} consecutive pages. Stopping.`);
+        break;
+      }
       
       try {
         await page.goto(nextPageUrl, { 
@@ -332,13 +346,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
         if (results.length === 0) {
-          console.warn("No results found on this page. Ending pagination.");
+          console.warn("No results found on this page. Stopping.");
           break;
         }
 
+        // Process emails for this batch
         await processEmailBatch(results);
-        allResults = [...allResults, ...results];
 
+        // Track new unique businesses
+        let newResultsCount = 0;
+        for (const business of results) {
+          const key = getBusinessKey(business);
+          if (!uniqueBusinessesMap.has(key)) {
+            uniqueBusinessesMap.set(key, business);
+            newResultsCount++;
+          }
+        }
+
+        console.log(`Page ${pageCount + 1}: Found ${results.length} results, ${newResultsCount} new unique businesses. Total unique: ${uniqueBusinessesMap.size}`);
+
+        // Update consecutive empty pages counter
+        if (newResultsCount === 0) {
+          consecutivePagesWithNoNewResults++;
+          console.log(`No new unique results on this page. Consecutive empty pages: ${consecutivePagesWithNoNewResults}`);
+        } else {
+          consecutivePagesWithNoNewResults = 0; // Reset counter
+        }
+
+        // Check for next page
         nextPageUrl = await page.evaluate(() => { 
           const nextBtn = document.querySelector(".nextpage") as HTMLAnchorElement | null;
           return nextBtn ? nextBtn.href : null;
@@ -358,9 +393,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
+    // Convert Map to array for response
+    const allResults = Array.from(uniqueBusinessesMap.values());
+
     const endTime = Date.now();
     console.log(`Scraping completed in ${(endTime - startTime) / 1000} seconds`);
-    console.log(`Total Scraped Entries: ${allResults.length}`);
+    console.log(`Total Unique Scraped Entries: ${allResults.length}`);
+    console.log(`Total pages scraped: ${pageCount + 1}`);
 
     return res.status(200).json(allResults);
 
