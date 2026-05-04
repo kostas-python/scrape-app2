@@ -24,7 +24,7 @@ interface BusinessData {
   website: string;
 }
 
-type LayerName = "vrisko" | "website" | "google_maps" | "facebook";
+type LayerName = "vrisko" | "website" | "gemi" | "google_maps" | "facebook";
 type EnrichStatus = "idle" | "pending" | "found" | "not_found";
 type ActiveTab = "scrape" | "upload";
 
@@ -39,6 +39,7 @@ interface EnrichState {
 const LAYER_META: Record<LayerName, { label: string; cls: string }> = {
   vrisko:      { label: "vrisko",   cls: "bg-blue-100 text-blue-700 border-blue-200" },
   website:     { label: "website",  cls: "bg-purple-100 text-purple-700 border-purple-200" },
+  gemi:        { label: "GEMI",     cls: "bg-green-100 text-green-700 border-green-200" },
   google_maps: { label: "maps",     cls: "bg-orange-100 text-orange-700 border-orange-200" },
   facebook:    { label: "facebook", cls: "bg-indigo-100 text-indigo-700 border-indigo-200" },
 };
@@ -221,16 +222,45 @@ export default function VriskoScraper() {
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
 
-    const effectiveTotal = Math.min(results.length, limit ?? results.length);
+    // Only enrich leads without an email
+    const indicesToEnrich: number[] = [];
+    for (let i = 0; i < results.length; i++) {
+      if (!results[i].email || !results[i].email.trim()) {
+        indicesToEnrich.push(i);
+      }
+    }
+
+    if (indicesToEnrich.length === 0) {
+      setSuccess("All leads already have emails — nothing to enrich.");
+      return;
+    }
+
+    // Apply limit to the filtered list, not the full results
+    const effectiveTotal = limit
+      ? Math.min(indicesToEnrich.length, limit)
+      : indicesToEnrich.length;
+    const targetIndices = indicesToEnrich.slice(0, effectiveTotal);
+    const leadsToSend = targetIndices.map(i => results[i]);
+    const serverIndexToOriginal = new Map<number, number>();
+      targetIndices.forEach((originalIdx, serverIdx) => {
+        serverIndexToOriginal.set(serverIdx, originalIdx);
+      });
 
     foundEmailsRef.current.clear();
     setEnriching(true);
     setEnrichProgress({ completed: 0, total: effectiveTotal });
-    setEnrichStates(results.map((_, i) => ({
-      status: i < effectiveTotal ? "pending" : "idle",
-      email: "",
-      layer: null,
-    } as EnrichState)));
+
+    // Initialize states: leads with existing emails stay "found", others become "pending"
+    setEnrichStates(results.map((lead, i) => {
+      if (lead.email && lead.email.trim()) {
+        return { status: 'found', email: lead.email, layer: null } as EnrichState;
+      }
+      if (targetIndices.includes(i)) {
+        return { status: 'pending', email: '', layer: null } as EnrichState;
+      }
+      return { status: 'idle', email: '', layer: null } as EnrichState;
+    }));
+
     setError("");
     setSuccess("");
 
@@ -240,7 +270,7 @@ export default function VriskoScraper() {
       const response = await fetch(enrichUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leads: results }),
+        body: JSON.stringify({ leads: leadsToSend }),  // ← only send filtered leads
         signal: abortControllerRef.current.signal,
       });
 
@@ -275,7 +305,9 @@ export default function VriskoScraper() {
           catch { continue; }
 
           if (eventName === 'progress') {
-            const idx    = data.leadIndex as number;
+            const serverIdx = data.leadIndex as number;
+            const idx = serverIndexToOriginal.get(serverIdx);
+          if (idx === undefined) continue;  // ← guard against stale events
             const layer  = data.layer as LayerName;
             const status = data.status as string;
             const email  = (data.email as string | undefined) ?? "";
@@ -306,7 +338,9 @@ export default function VriskoScraper() {
           }
 
           if (eventName === 'result') {
-            const idx   = data.leadIndex as number;
+            const serverIdx = data.leadIndex as number;
+            const idx = serverIndexToOriginal.get(serverIdx);
+          if (idx === undefined) continue;
             const email = data.email as string;
             foundEmailsRef.current.set(idx, email);
             setEnrichStates(prev => {
@@ -400,7 +434,7 @@ export default function VriskoScraper() {
           <div className="flex items-center gap-1.5 text-gray-400">
             <SpinnerIcon />
             {state.layer && (
-              <span className="text-xs">{LAYER_META[state.layer].label}…</span>
+              <span className="text-xs">{LAYER_META[state.layer]?.label ?? state.layer}…</span>
             )}
           </div>
         );

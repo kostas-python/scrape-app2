@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import type { Browser, Page, HTTPRequest } from "puppeteer";
+import { tryWebsiteEnhanced } from "@/lib/enrichment/websiteEnhanced";
+import { tryGEMI } from "@/lib/enrichment/gemiLayer";
 
 puppeteer.use(StealthPlugin());
 
@@ -28,7 +30,7 @@ interface BusinessData {
   website: string;
 }
 
-type LayerName = "vrisko" | "website" | "google_maps" | "facebook";
+type LayerName = "vrisko" | "website" | "gemi" | "google_maps" | "facebook";
 type LayerStatus = "found" | "not_found" | "error";
 
 interface ProgressEvent {
@@ -136,6 +138,14 @@ async function tryVrisko(lead: BusinessData, browser: Browser): Promise<string> 
         "a.emailClickLoggingClass[href*='/email/'], a.detailsMail[href*='/email/']"
       );
       if (emailLink?.href) return `EMAIL_URL:${emailLink.href}`;
+
+      // NEW: check for the AJAX email form action — newer vrisko listings use this
+      const emailForm = document.querySelector<HTMLFormElement>(
+        "form#EmailForm[action*='/email/'], form[action*='/EmailCompany/']"
+      );
+      if (emailForm?.action) {
+        return `EMAIL_URL:${emailForm.action}`;
+      }
 
       const text = document.body.textContent ?? "";
       const m = text.match(new RegExp(re));
@@ -319,8 +329,9 @@ async function tryFacebook(lead: BusinessData, browser: Browser): Promise<string
 type LayerFn = (lead: BusinessData, browser: Browser) => Promise<string>;
 
 const LAYERS: ReadonlyArray<{ name: LayerName; fn: LayerFn }> = [
+  { name: "website",     fn: tryWebsiteEnhanced },
+  { name: "gemi",        fn: tryGEMI },
   { name: "vrisko",      fn: tryVrisko },
-  { name: "website",     fn: tryWebsite },
   { name: "google_maps", fn: tryGoogleMaps },
   { name: "facebook",    fn: tryFacebook },
 ];
